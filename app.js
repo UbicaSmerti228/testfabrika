@@ -965,6 +965,7 @@
   }
 
   async function renderPoster() {
+    fillPostText();
     const canvas = $('poster');
     const ctx = canvas.getContext('2d');
     if (!templateImg) templateImg = await loadImg(POSTER.template, false);
@@ -988,7 +989,7 @@
       if (w) drawName(ctx, withSurname ? fullName(w.user) : w.user.first_name, s);
     });
     const notes = [];
-    if (state.winners.length > 3) notes.push('На картинке три первых места. Полный список копируется кнопкой «Скопировать список».');
+    if (state.winners.length > 3) notes.push('На картинке три первых места. Все места есть в тексте поста ниже.');
     if (tainted) notes.push('ВКонтакте не дал браузеру сохранить фото в файл. Если кнопка «Скачать картинку» не сработает, сделайте скриншот картинки.');
     $('posterNote').textContent = notes.join(' ');
     $('posterNote').hidden = !notes.length;
@@ -1029,23 +1030,41 @@
     });
   }
 
-  function winnersText() {
-    const lines = ['Победители розыгрыша'];
-    for (const w of [...state.winners].sort((a, b) => a.place - b.place)) {
-      lines.push(w.place + ' место: ' + fullName(w.user) + (state.source.demo ? '' : ', ' + profileUrl(w.user)));
+  // Текст поста с упоминаниями [id123|Имя Фамилия] — во ВКонтакте они становятся ссылками
+  const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  function mention(u) {
+    const name = fullName(u).replace(/[\[\]|]/g, '').trim() || ('id' + u.id);
+    return '[id' + u.id + '|' + name + ']';
+  }
+  function postText() {
+    const lines = [
+      'Результаты розыгрыша! 🥳',
+      '',
+      'Сразу скажем тем, кто не победил — не расстраивайтесь! Следующий розыгрыш опубликуем уже завтра. 🎁',
+      '',
+      state.winners.length === 1 ? 'Итак, поздравляем нашего счастливого победителя:' : 'Итак, поздравляем наших счастливых победителей:',
+      '',
+    ];
+    for (const w of [...state.winners].sort((x, y) => x.place - y.place)) {
+      lines.push((MEDALS[w.place] || '🏅') + ' ' + w.place + ' место — ' + mention(w.user));
+      lines.push('');
     }
+    lines.push(state.winners.length === 1 ? 'С победителем в личных сообщениях свяжется наш администратор.' : 'С победителями в личных сообщениях свяжется наш администратор.');
+    lines.push('');
+    lines.push('Спасибо всем за участие! ✨');
     return lines.join('\n');
   }
-  $('copyBtn').addEventListener('click', async () => {
-    const text = winnersText();
-    try { await navigator.clipboard.writeText(text); toast('Список скопирован'); }
-    catch (e) {
-      const ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); toast('Список скопирован'); } catch (e2) { toast('Не получилось скопировать'); }
-      ta.remove();
-    }
-  });
+  function fillPostText() { $('postText').value = postText(); }
+
+  async function copyText(text, okMsg) {
+    try { await navigator.clipboard.writeText(text); toast(okMsg); return; } catch (e) { /* запасной способ ниже */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(okMsg); } catch (e2) { toast('Не получилось скопировать. Выделите текст и скопируйте вручную.'); }
+    ta.remove();
+  }
+  $('copyBtn').addEventListener('click', () => copyText($('postText').value, 'Текст поста скопирован'));
 
   function fmtTime(d) { return d.toLocaleString('ru-RU'); }
   $('protocolBtn').addEventListener('click', () => {

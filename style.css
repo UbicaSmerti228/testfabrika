@@ -52,6 +52,8 @@ a { color: var(--wine); }
 }
 .lead { margin: 0; font-size: 18px; max-width: 34em; }
 .h2 { font: 700 26px/1.1 var(--display); margin: 0 0 14px; }
+.h3 { font: 700 21px/1.15 var(--display); margin: 26px 0 6px; padding-top: 20px; border-top: 2px dashed var(--line); }
+.post-text { font-size: 15px; line-height: 1.5; margin: 6px 0 12px; }
 
 /* panels */
 .panel {

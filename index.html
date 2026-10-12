@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Roboto+Condensed:wght@700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <header class="top">
@@ -137,7 +137,13 @@
       <div class="actions actions--wrap">
         <button type="button" class="btn" id="downloadBtn">Скачать картинку</button>
         <button type="button" class="btn btn--light" id="shareBtn" hidden>Поделиться</button>
-        <button type="button" class="btn btn--light" id="copyBtn">Скопировать список</button>
+      </div>
+
+      <h3 class="h3"><label for="postText">Текст для поста</label></h3>
+      <p class="muted small">Имена победителей станут ссылками на их страницы, когда текст вставят в пост ВКонтакте. Текст можно поправить прямо здесь.</p>
+      <textarea id="postText" class="post-text" rows="16" spellcheck="false"></textarea>
+      <div class="actions actions--wrap">
+        <button type="button" class="btn" id="copyBtn">Скопировать текст поста</button>
         <button type="button" class="btn btn--light" id="protocolBtn">Скачать протокол</button>
       </div>
       <p class="muted small">Протокол — это файл со всеми участниками, прошедшими проверку, и результатом выбора. Его можно показать, если кто-то усомнится в честности.</p>
@@ -150,6 +156,6 @@
     Победители выбираются генератором случайных чисел браузера (crypto.getRandomValues).
   </footer>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
