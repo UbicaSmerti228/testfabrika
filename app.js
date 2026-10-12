@@ -15,7 +15,11 @@
     name: { capHeight: 39.5, color: '#0a0704', font: '"Roboto Condensed", "Arial Narrow", sans-serif' },
   };
   const API_VERSION = '5.199';
-  const MIN_GAP_MS = 350; // ВК разрешает ~3 запроса в секунду
+  // Встроенный сервисный ключ: сайтом можно пользоваться без настройки.
+  // Свой ключ, сохранённый в браузере, имеет приоритет.
+  const DEFAULT_TOKEN = '614f4d75614f4d75614f4d7531620b3bdd6614f614f4d750b839c6908bce35e0e58b9e1';
+  const getToken = () => store.get('vk_token') || DEFAULT_TOKEN;
+  const MIN_GAP_MS = 360; // ВК разрешает ~3 запроса в секунду
   const BATCH = 300;
 
   const $ = (id) => document.getElementById(id);
@@ -68,7 +72,7 @@
   }
 
   async function vkCall(method, params) {
-    const token = store.get('vk_token') || '';
+    const token = getToken();
     for (let attempt = 0; attempt < 5; attempt++) {
       const wait = lastCall + MIN_GAP_MS - Date.now();
       if (wait > 0) await sleep(wait);
@@ -117,6 +121,7 @@
           info.date = items[0].date;
           info.likes = items[0].likes ? items[0].likes.count : null;
           info.reposts = items[0].reposts ? items[0].reposts.count : null;
+          info.wallReposts = items[0].reposts && items[0].reposts.wall_count != null ? items[0].reposts.wall_count : null;
         }
       } catch (e) { if (e.code === 5) throw e; }
       try {
@@ -144,6 +149,53 @@
         if (onProgress) onProgress(ids.length, total);
       }
       return ids;
+    },
+    // Кто сделал репост: список likes.getList(copies) + wall.getReposts
+    async reposters(ownerId, postId, onProgress) {
+      const ids = new Set();
+      const listed = (await vkSource.likers(ownerId, postId, 'copies', (d) => onProgress && onProgress('список: ' + d))).filter((id) => id > 0);
+      listed.forEach((id) => ids.add(id));
+      let extra = 0;
+      try {
+        let offset = 0;
+        for (let page = 0; page < 30; page++) {
+          const r = await vkCall('wall.getReposts', { owner_id: ownerId, post_id: postId, offset, count: 1000 });
+          const items = (r && r.items) || [];
+          if (!items.length) break;
+          for (const it of items) {
+            const id = it.owner_id > 0 ? it.owner_id : it.from_id;
+            if (id > 0 && !ids.has(id)) { ids.add(id); extra++; }
+          }
+          offset += items.length;
+          if (onProgress) onProgress('репосты: ' + ids.size);
+        }
+      } catch (e) { if (e.code === 5) throw e; }
+      return { ids, listed: listed.length, extra };
+    },
+    // Есть ли репост поста на стене человека. 'yes' | 'no' | 'closed'
+    async wallReposted(userId, ownerId, postId, since) {
+      let offset = 0;
+      for (let page = 0; page < 8; page++) {
+        let r = null;
+        for (let attempt = 0; attempt < 2 && !r; attempt++) {
+          try { r = await vkCall('wall.get', { owner_id: userId, count: 20, offset, filter: 'owner' }); }
+          catch (e) {
+            if (e.code === 5) throw e;
+            if (e.code === -1 && attempt === 0) continue;
+            if (e.code === -1) throw e;
+            return 'closed';
+          }
+        }
+        const items = (r && r.items) || [];
+        let oldest = Infinity;
+        for (const it of items) {
+          if ((it.copy_history || []).some((c) => c.owner_id === ownerId && c.id === postId)) return 'yes';
+          if (!it.is_pinned && it.date < oldest) oldest = it.date;
+        }
+        if (items.length < 20 || (since && oldest < since)) return 'no';
+        offset += 20;
+      }
+      return 'no';
     },
     async members(groupId, ids, onProgress) {
       const res = new Set();
@@ -260,13 +312,25 @@
     };
     return {
       demo: true,
-      async postInfo() { await lag(); return { name: 'Фабрика суши. Яркеево (тестовые данные)', photo: '', date: Date.now() / 1000 - 86400 * 3, likes: users.filter((u) => u.liked).length, reposts: users.filter((u) => u.reposted).length + 2 }; },
+      async postInfo() { await lag(); return { name: 'Фабрика суши. Яркеево (тестовые данные)', photo: '', date: Date.now() / 1000 - 86400 * 3, likes: users.filter((u) => u.liked).length, reposts: users.filter((u) => u.reposted).length + 2, wallReposts: users.filter((u) => u.reposted).length }; },
       async likers(o, p, filter, onProgress) {
         await lag(); await lag();
         const ids = users.filter((u) => (filter === 'copies' ? u.reposted : u.liked)).map((u) => u.id);
         if (filter === 'copies') ids.push(-215596190, -1);
         if (onProgress) onProgress(ids.length, ids.length);
         return ids;
+      },
+      async reposters() {
+        await lag(); await lag();
+        const visible = users.filter((u) => u.reposted).filter((u, i) => i % 3 === 0).map((u) => u.id);
+        return { ids: new Set(visible), listed: visible.length, extra: 0 };
+      },
+      async wallReposted(uid) {
+        await sleep(30);
+        const u = byId.get(uid);
+        if (!u) return 'no';
+        if (u.is_closed) return 'closed';
+        return u.reposted ? 'yes' : 'no';
       },
       async members(g, ids, onProgress) {
         await lag(); await lag();
@@ -333,9 +397,9 @@
   // Ключ доступа
   // ---------------------------------------------------------------------------
   function refreshTokenUi() {
-    const has = !!store.get('vk_token');
-    $('tokenDot').classList.toggle('ok', has);
-    $('tokenBtnText').textContent = has ? 'Ключ ВК сохранён' : 'Ключ ВК';
+    const own = !!store.get('vk_token');
+    $('tokenDot').classList.toggle('ok', own || !!DEFAULT_TOKEN);
+    $('tokenBtnText').textContent = own ? 'Свой ключ ВК' : (DEFAULT_TOKEN ? 'Ключ ВК встроен' : 'Ключ ВК');
   }
   function openTokenPanel(open) {
     const p = $('tokenPanel');
@@ -430,7 +494,7 @@
       $('postUrl').focus();
       return;
     }
-    if (!source.demo && !store.get('vk_token')) {
+    if (!source.demo && !getToken()) {
       openTokenPanel(true);
       toast('Сначала добавьте ключ ВК или попробуйте тестовые данные');
       return;
@@ -475,21 +539,23 @@
     $('postCard').hidden = true;
     setStatus(source.demo ? 'Тестовые данные: выдуманные участники, ВКонтакте не используется.' : 'Собираю данные из ВКонтакте…');
 
+    const both = opts.like && opts.repost;
     const st = [];
     if (opts.like) st.push({ key: 'like', label: 'Поставили лайк' });
-    if (opts.repost) st.push({ key: 'repost', label: opts.like ? 'И сделали репост' : 'Сделали репост' });
+    if (opts.repost && !opts.like) st.push({ key: 'repost', label: 'Сделали репост' });
     if (!opts.like && !opts.repost) st.push({ key: 'any', label: 'Лайкнули или сделали репост' });
     if (opts.exclude.length) st.push({ key: 'excl', label: 'Не в списке исключений' });
     if (opts.member) st.push({ key: 'member', label: 'Подписаны на сообщество' });
     if (opts.active) st.push({ key: 'active', label: 'Страница не удалена и не заблокирована' });
     if (opts.noPhoto) st.push({ key: 'photo', label: 'Есть аватарка' });
     if (opts.closed) st.push({ key: 'closed', label: 'Профиль открыт' });
+    if (both) st.push({ key: 'repost', label: 'И сделали репост' });
     buildFunnel(st);
     $('checkPanel').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 
     try {
-      const info = await source.postInfo(p.ownerId, p.postId);
-      if (info && info.name) {
+      const info = (await source.postInfo(p.ownerId, p.postId)) || {};
+      if (info.name) {
         $('postName').textContent = info.name;
         const bits = [];
         if (info.date) bits.push(new Date(info.date * 1000).toLocaleDateString('ru-RU'));
@@ -499,8 +565,10 @@
         if (info.photo) { $('postAva').src = info.photo; $('postAva').hidden = false; } else { $('postAva').hidden = true; }
         $('postCard').hidden = false;
       }
+      const expectedReposts = info.wallReposts != null ? info.wallReposts : info.reposts;
 
       let pool = null;
+      let reposts = null;
       if (opts.like || !opts.repost) {
         const key = opts.like ? 'like' : 'any';
         stageRun(key);
@@ -511,13 +579,19 @@
       if (opts.repost || !opts.like) {
         const key = opts.repost ? 'repost' : 'any';
         stageRun(key);
-        const reps = (await source.likers(p.ownerId, p.postId, 'copies', (d, t) => stageRun(key, d + ' из ' + t))).filter((id) => id > 0);
-        if (opts.repost) {
-          pool = opts.like ? new Set(reps.filter((id) => pool.has(id))) : new Set(reps);
-          stageDone('repost', pool.size, 'Репосты в закрытые профили и в личные сообщения ВКонтакте не показывает');
-        } else {
-          for (const id of reps) pool.add(id);
+        reposts = await source.reposters(p.ownerId, p.postId, (t) => stageRun(key, t));
+        if (opts.repost && !opts.like) {
+          pool = new Set(reposts.ids);
+          let note = 'ВК не показывает репосты в закрытые профили и в личные сообщения.';
+          if (!pool.size && expectedReposts) note = 'ВКонтакте не отдал список репостов. Включите условие «Лайк»: тогда репосты проверятся по стенам тех, кто лайкнул.';
+          stageDone('repost', pool.size, note);
+        } else if (!opts.repost) {
+          for (const id of reposts.ids) pool.add(id);
           stageDone('any', pool.size);
+        } else {
+          const s = stage('repost');
+          s.el.className = 'wait';
+          s.el.querySelector('.f-num').textContent = '';
         }
       }
 
@@ -555,6 +629,37 @@
       if (opts.closed) {
         users = users.filter((u) => !u.is_closed || u.can_access_closed);
         stageDone('closed', users.length);
+      }
+
+      if (both) {
+        stageRun('repost');
+        const confirmed = users.filter((u) => reposts.ids.has(u.id));
+        const fromList = confirmed.length;
+        const rest = users.filter((u) => !reposts.ids.has(u.id));
+        let found = 0, unverifiable = 0, checked = 0;
+        const needWalls = rest.length > 0 && (expectedReposts == null || reposts.ids.size < expectedReposts);
+        if (needWalls) {
+          const t0 = Date.now();
+          for (const u of rest) {
+            checked++;
+            if (u.deactivated || (u.is_closed && !u.can_access_closed)) { unverifiable++; continue; }
+            const r = await source.wallReposted(u.id, p.ownerId, p.postId, info.date || 0);
+            if (r === 'yes') { confirmed.push(u); found++; } else if (r === 'closed') unverifiable++;
+            stageRun('repost', checked + ' из ' + rest.length);
+            const left = Math.ceil((((Date.now() - t0) / checked) * (rest.length - checked)) / 60000);
+            setStatus('Проверяю репосты на стенах участников: ' + checked + ' из ' + rest.length + (rest.length - checked > 20 ? ', осталось около ' + left + ' мин.' : ''));
+          }
+          setStatus('');
+        }
+        users = confirmed;
+        const parts = [];
+        if (needWalls) {
+          parts.push('По списку ВК: ' + fromList + ', найдено на стенах: ' + found);
+          if (unverifiable) parts.push(unverifiable + ' ' + plural(unverifiable, 'страницу', 'страницы', 'страниц') + ' не проверить: профиль или стена закрыты');
+        } else {
+          parts.push('ВК не показывает репосты в закрытые профили и в личные сообщения');
+        }
+        stageDone('repost', users.length, parts.join('. '));
       }
 
       users.sort((a, b) => a.id - b.id);
