@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Розыгрыш по посту ВК</title>
+  <meta name="description" content="Проверка условий розыгрыша ВКонтакте, честный выбор победителей и готовая картинка с победителями.">
+  <meta name="theme-color" content="#FFBF3F">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Roboto+Condensed:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top__row">
+      <span class="brand">Фабрика суши <span class="brand__sub">розыгрыши</span></span>
+      <button class="ghost-btn" id="tokenBtn" type="button" aria-expanded="false" aria-controls="tokenPanel">
+        <span class="dot" id="tokenDot" aria-hidden="true"></span><span id="tokenBtnText">Ключ ВК</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel token" id="tokenPanel" hidden>
+      <h2 class="h2">Ключ доступа ВКонтакте</h2>
+      <p class="muted">Нужен сервисный ключ вашего приложения ВК. Он хранится только в этом браузере и никуда не отправляется, кроме самого ВКонтакте.</p>
+      <div class="field">
+        <label for="token">Сервисный ключ</label>
+        <div class="input-row">
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Вставьте ключ">
+          <button type="button" class="ghost-btn small" id="tokenShow">Показать</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="tokenSave">Сохранить ключ</button>
+        <button type="button" class="link-btn" id="tokenClear">Удалить ключ</button>
+      </div>
+      <details class="help">
+        <summary>Где взять ключ</summary>
+        <ol>
+          <li>Откройте раздел для разработчиков ВК (<a href="https://dev.vk.com" target="_blank" rel="noopener">dev.vk.com</a>) или кабинет VK ID для бизнеса и создайте приложение.</li>
+          <li>Подтвердите действие по телефону, если ВК попросит.</li>
+          <li>В настройках приложения найдите поле «Сервисный ключ доступа» и скопируйте его сюда.</li>
+        </ol>
+        <p class="muted">Без ключа можно попробовать сайт на тестовых данных.</p>
+      </details>
+    </section>
+
+    <section class="hero">
+      <h1 class="h1">Розыгрыш по&nbsp;посту</h1>
+      <p class="lead">Вставьте ссылку на пост. Сайт проверит, кто выполнил условия, выберет победителей и соберёт картинку для публикации.</p>
+    </section>
+
+    <form class="panel" id="setup" novalidate>
+      <div class="field">
+        <label for="postUrl">Ссылка на пост</label>
+        <input id="postUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://vk.com/wall-215596190_1837">
+        <p class="field__err" id="postErr" hidden></p>
+      </div>
+
+      <fieldset class="conds">
+        <legend>Условия</legend>
+        <label class="chip"><input type="checkbox" id="cLike" checked><span>Лайк</span></label>
+        <label class="chip"><input type="checkbox" id="cRepost" checked><span>Репост</span></label>
+        <label class="chip"><input type="checkbox" id="cMember" checked><span>Подписка на сообщество</span></label>
+        <label class="chip"><input type="checkbox" id="cActive" checked><span>Активные страницы</span></label>
+      </fieldset>
+
+      <div class="field field--inline">
+        <span class="label" id="countLabel">Победителей</span>
+        <div class="stepper" role="group" aria-labelledby="countLabel">
+          <button type="button" id="countMinus" aria-label="Меньше победителей">−</button>
+          <output id="countOut" aria-live="polite">3</output>
+          <button type="button" id="countPlus" aria-label="Больше победителей">+</button>
+        </div>
+      </div>
+
+      <details class="more">
+        <summary>Дополнительные фильтры</summary>
+        <label class="check"><input type="checkbox" id="fNoPhoto"> Исключить страницы без аватарки</label>
+        <label class="check"><input type="checkbox" id="fClosed"> Исключить закрытые профили</label>
+        <div class="field">
+          <label for="groupOverride">Проверять подписку на другое сообщество</label>
+          <input id="groupOverride" type="text" autocomplete="off" spellcheck="false" placeholder="По умолчанию — сообщество, где опубликован пост">
+        </div>
+        <div class="field">
+          <label for="exclude">Не допускать к розыгрышу</label>
+          <textarea id="exclude" rows="3" spellcheck="false" placeholder="Ссылки или id через запятую или с новой строки: админы, прошлые победители"></textarea>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--big" id="checkBtn">Проверить участников</button>
+        <button type="button" class="link-btn" id="demoBtn">Попробовать на тестовых данных</button>
+      </div>
+    </form>
+
+    <section class="panel" id="checkPanel" hidden aria-live="polite">
+      <div class="post" id="postCard" hidden>
+        <img class="post__ava" id="postAva" alt="">
+        <div>
+          <div class="post__name" id="postName"></div>
+          <div class="muted small" id="postMeta"></div>
+        </div>
+      </div>
+      <h2 class="h2">Проверка условий</h2>
+      <ol class="funnel" id="funnel"></ol>
+      <p class="status" id="checkStatus"></p>
+      <div class="total" id="totalBox" hidden>
+        <span class="total__num" id="totalNum">0</span>
+        <span class="total__txt" id="totalTxt">участников прошли проверку</span>
+      </div>
+      <details class="people" id="peopleBox" hidden>
+        <summary>Список участников</summary>
+        <ul class="people__list" id="peopleList"></ul>
+      </details>
+      <div class="actions" id="drawActions" hidden>
+        <button type="button" class="btn btn--big" id="drawBtn">Разыграть</button>
+      </div>
+    </section>
+
+    <section class="panel" id="drawPanel" hidden>
+      <h2 class="h2" id="drawTitle">Выбираем победителей</h2>
+      <div class="reel" id="reel" aria-hidden="true">
+        <div class="reel__track" id="reelTrack"></div>
+        <div class="reel__marker"></div>
+      </div>
+      <ol class="winners" id="winners"></ol>
+    </section>
+
+    <section class="panel" id="posterPanel" hidden>
+      <h2 class="h2">Картинка с победителями</h2>
+      <p class="muted small" id="posterNote"></p>
+      <div class="poster">
+        <canvas id="poster" width="1254" height="1254" aria-label="Картинка с победителями"></canvas>
+      </div>
+      <div class="actions actions--wrap">
+        <button type="button" class="btn" id="downloadBtn">Скачать картинку</button>
+        <button type="button" class="btn btn--light" id="shareBtn" hidden>Поделиться</button>
+        <button type="button" class="btn btn--light" id="copyBtn">Скопировать список</button>
+        <button type="button" class="btn btn--light" id="protocolBtn">Скачать протокол</button>
+      </div>
+      <p class="muted small">Протокол — это файл со всеми участниками, прошедшими проверку, и результатом выбора. Его можно показать, если кто-то усомнится в честности.</p>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer class="wrap foot muted small">
+    Победители выбираются генератором случайных чисел браузера (crypto.getRandomValues).
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
